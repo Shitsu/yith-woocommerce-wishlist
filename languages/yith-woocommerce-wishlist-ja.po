@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: YITH WooCommerce Wishlist\n"
 "POT-Creation-Date: 2016-10-12 13:51+0900\n"
-"PO-Revision-Date: 2016-10-12 13:52+0900\n"
+"PO-Revision-Date: 2016-10-12 15:36+0900\n"
 "Last-Translator: \n"
 "Language-Team: Your Inspiration Themes <plugins@yithemes.com>\n"
 "Language: ja\n"
@@ -546,7 +546,7 @@ msgstr ""
 
 #: ../includes/class.yith-wcwl.php:1319
 msgid "Product successfully removed."
-msgstr ""
+msgstr "欲しいものリストから商品を削除しました。"
 
 #: ../includes/class.yith-wcwl.php:1323
 msgid "Error. Unable to remove the product from the wishlist."
@@ -554,7 +554,7 @@ msgstr ""
 
 #: ../includes/class.yith-wcwl.php:1327 ../templates/wishlist-view.php:260
 msgid "No products were added to the wishlist"
-msgstr ""
+msgstr "欲しいものリストに商品はまだ追加されておりません。"
 
 #: ../includes/class.yith-wcwl.php:1369
 msgid "An error as occurred."
