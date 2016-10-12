@@ -86,7 +86,7 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
                 $this->wcwl_admin_init = YITH_WCWL_Admin_Init();
             }
 
-            add_action( 'after_setup_theme', array( $this, 'plugin_fw_loader' ), 1 );
+            add_action( 'plugins_loaded', array( $this, 'plugin_fw_loader' ), 15 );
 
             // add rewrite rule
             add_action( 'init', array( $this, 'add_rewrite_rules' ), 0 );
@@ -124,8 +124,12 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
          * @since 2.0.0
          */
         public function plugin_fw_loader() {
-            if ( ! defined( 'YIT' ) || ! defined( 'YIT_CORE_PLUGIN' ) ) {
-                require_once( YITH_WCWL_DIR . '/plugin-fw/yit-plugin.php' );
+            if ( ! defined( 'YIT_CORE_PLUGIN' ) ) {
+                global $plugin_fw_data;
+                if( ! empty( $plugin_fw_data ) ){
+                    $plugin_fw_file = array_shift( $plugin_fw_data );
+                    require_once( $plugin_fw_file );
+                }
             }
         }
 
@@ -177,7 +181,7 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
                 }
     		}
             
-            return $exists;
+            return apply_filters( 'yith_wcwl_is_product_in_wishlist', $exists, $product_id, $wishlist_id );
         }
         
         /**
@@ -194,8 +198,17 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
             $user_id = ( ! empty( $this->details['user_id'] ) ) ? $this->details['user_id'] : false;
             $wishlist_name = ( ! empty( $this->details['wishlist_name'] ) ) ? $this->details['wishlist_name'] : '';
 
+            do_action( 'yith_wcwl_adding_to_wishlist', $prod_id, $wishlist_id, $user_id );
+
+            // filtering params
+            $prod_id = apply_filters( 'yith_wcwl_adding_to_wishlist_prod_id', $prod_id );
+            $wishlist_id = apply_filters( 'yith_wcwl_adding_to_wishlist_wishlist_id', $wishlist_id );
+            $quantity = apply_filters( 'yith_wcwl_adding_to_wishlist_quantity', $quantity );
+            $user_id = apply_filters( 'yith_wcwl_adding_to_wishlist_user_id', $user_id );
+            $wishlist_name = apply_filters( 'yith_wcwl_adding_to_wishlist_wishlist_name', $wishlist_name );
+
             if ( $prod_id == false ) {
-                $this->errors[] = __( 'An error occurred while adding products to the wishlist.', 'yit' );
+                $this->errors[] = __( 'An error occurred while adding products to the wishlist.', 'yith-woocommerce-wishlist' );
                 return "error";
             }
 
@@ -255,6 +268,17 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
                 }
 
                 $result = $wpdb->insert( $wpdb->yith_wcwl_items, $insert_args );
+
+                if( $result ){
+                    if( $this->last_operation_token ) {
+                        delete_transient( 'yith_wcwl_wishlist_count_' . $this->last_operation_token );
+                    }
+
+                    if( $user_id ) {
+                        delete_transient( 'yith_wcwl_user_default_count_' . $user_id );
+                        delete_transient( 'yith_wcwl_user_total_count_' . $user_id );
+                    }
+                }
             }
             else {
                 $cookie = array(
@@ -276,10 +300,11 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
             }
 
             if( $result ) {
+                do_action( 'yith_wcwl_added_to_wishlist', $prod_id, $wishlist_id, $user_id );
                 return "true";
             }
             else {
-                $this->errors[] = __( 'An error occurred while adding products to wishlist.', 'yit' );
+                $this->errors[] = __( 'An error occurred while adding products to wishlist.', 'yith-woocommerce-wishlist' );
                 return "error";
             }
         }
@@ -325,10 +350,19 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
                 $result = $wpdb->query( $wpdb->prepare( $sql, $sql_args ) );
 
                 if ( $result ) {
+                    if( $this->last_operation_token ) {
+                        delete_transient( 'yith_wcwl_wishlist_count_' . $this->last_operation_token );
+                    }
+
+                    if( $user_id ) {
+                        delete_transient( 'yith_wcwl_user_default_count_' . $user_id );
+                        delete_transient( 'yith_wcwl_user_total_count_' . $user_id );
+                    }
+
                     return true;
                 }
                 else {
-                    $this->errors[] = __( 'An error occurred while removing products from the wishlist', 'yit' );
+                    $this->errors[] = __( 'An error occurred while removing products from the wishlist', 'yith-woocommerce-wishlist' );
                     return false;
                 }
             }
@@ -357,27 +391,133 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
             global $wpdb;
 
             if( is_user_logged_in() || $wishlist_token != false ) {
-                $sql = "SELECT COUNT(*) AS `cnt`
-                        FROM `{$wpdb->yith_wcwl_items}` AS i
-                        LEFT JOIN `{$wpdb->yith_wcwl_wishlists}` AS l ON l.ID = i.wishlist_id";
-
-                if( ! empty( $wishlist_token ) ){
-                    $sql .= " WHERE l.`wishlist_token` = %s";
-                    $query = $wpdb->prepare( $sql, $wishlist_token );
+                if( ! empty( $wishlist_token ) ) {
+                    $count = get_transient( 'yith_wcwl_wishlist_count_' . $wishlist_token );
                 }
                 else{
-                    $sql .= " WHERE l.`is_default` = %d AND l.`user_id` = %d";
-                    $query = $wpdb->prepare( $sql, array( 1, get_current_user_id() ) );
+                    $count = get_transient( 'yith_wcwl_user_default_count_' . get_current_user_id() );
                 }
 
-                $results = $wpdb->get_var( $query );
-                return $results;
+                if( false === $count ){
+                    $sql  = "SELECT COUNT( i.`prod_id` ) AS `cnt`
+                        FROM `{$wpdb->yith_wcwl_items}` AS i
+                        LEFT JOIN `{$wpdb->yith_wcwl_wishlists}` AS l ON l.ID = i.wishlist_id
+                        INNER JOIN `{$wpdb->posts}` AS p ON i.`prod_id` = p.`ID`
+                        INNER JOIN `{$wpdb->postmeta}` AS pm ON p.`ID` = pm.`post_id`
+                        WHERE p.`post_type` = %s AND p.`post_status` = %s AND pm.`meta_key` = %s AND pm.`meta_value` = %s";
+                    $args = array(
+                        'product',
+                        'publish',
+                        '_visibility',
+                        'visible '
+                    );
+
+                    if ( ! empty( $wishlist_token ) ) {
+                        $sql .= " AND l.`wishlist_token` = %s";
+                        $args[] = $wishlist_token;
+                    } else {
+                        $sql .= " AND l.`is_default` = %d AND l.`user_id` = %d";
+                        $args[] = 1;
+                        $args[] = get_current_user_id();
+                    }
+
+                    $query = $wpdb->prepare( $sql, $args );
+                    $count = $wpdb->get_var( $query );
+
+                    $transient_name = ! empty( $wishlist_token ) ? ( 'yith_wcwl_wishlist_count_' . $wishlist_token ) : ( 'yith_wcwl_user_default_count_' . get_current_user_id() );
+                    set_transient( $transient_name, $count, WEEK_IN_SECONDS );
+                }
+
+                return $count;
             }
             else {
                 $cookie = yith_getcookie( 'yith_wcwl_products' );
 
-                return count( $cookie );
+                $existing_products = $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} AS p LEFT JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id WHERE post_type = %s AND post_status = %s AND pm.meta_key = %s AND pm.meta_value = %s", array( 'product', 'publish', '_visibility', 'visible' ) ) );
+                $wishlist_products = array();
+
+                if( ! empty( $cookie ) ){
+                    foreach( $cookie as $elem ){
+                        $wishlist_products[] = $elem['prod_id'];
+                    }
+                }
+
+                $wishlist_products = array_intersect( $wishlist_products, $existing_products );
+
+                return count( $wishlist_products );
             }
+        }
+
+        /**
+         * Count all user items in wishlists
+         *
+         * @return int Count of items added all over wishlist from current user
+         * @since 2.0.12
+         */
+        public function count_all_products() {
+            global $wpdb;
+
+            if( is_user_logged_in() ) {
+                $user_id = get_current_user_id();
+
+                if( false === $count = get_transient( 'yith_wcwl_user_total_count_' . $user_id ) ) {
+                    $sql = "SELECT COUNT( i.`prod_id` ) AS `cnt`
+                        FROM `{$wpdb->yith_wcwl_items}` AS i
+                        INNER JOIN `{$wpdb->posts}` AS p ON i.`prod_id` = p.`ID`
+                        INNER JOIN `{$wpdb->postmeta}` AS pm ON p.`ID` = pm.`post_id`
+                        WHERE i.`user_id` = %d AND i.`prod_id` IN (
+                            SELECT ID
+                            FROM {$wpdb->posts} AS p
+                            WHERE p.`post_type` = %s AND p.`post_status` = %s
+                        )";
+
+                    $query = $wpdb->prepare( $sql, array( $user_id, 'product', 'publish' ) );
+                    $count = $wpdb->get_var( $query );
+
+                    set_transient( 'yith_wcwl_user_total_count_' . $user_id, $count, WEEK_IN_SECONDS );
+                }
+
+                return $count;
+            }
+            else {
+                $cookie = yith_getcookie( 'yith_wcwl_products' );
+
+                $existing_products = $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} AS p LEFT JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id WHERE post_type = %s AND post_status = %s AND pm.meta_key = %s AND pm.meta_value = %s", array( 'product', 'publish', '_visibility', 'visible' ) ) );
+                $wishlist_products = array();
+
+                if( ! empty( $cookie ) ){
+                    foreach( $cookie as $elem ){
+                        $wishlist_products[] = $elem['prod_id'];
+                    }
+                }
+
+                $wishlist_products = array_intersect( $wishlist_products, $existing_products );
+
+                return count( $wishlist_products );
+            }
+        }
+
+        /**
+         * Count number of times a product was added to users wishlists
+         *
+         * @param $product_id int|bool Product id; false will force method to use global product
+         *
+         * @return int Number of times the product was added to wishlist
+         * @since 2.0.13
+         */
+        public function count_add_to_wishlist( $product_id = false ) {
+            global $product, $wpdb;
+
+            $product_id = ! ( $product_id ) ? $product->id : $product_id;
+
+            if( ! $product_id ){
+                return 0;
+            }
+
+            $query = "SELECT COUNT( DISTINCT( user_id ) ) FROM {$wpdb->yith_wcwl_items} WHERE prod_id = %d";
+            $res = $wpdb->get_var( $wpdb->prepare( $query, $product_id ) );
+
+            return $res;
         }
 
         /**
@@ -407,11 +547,21 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
             if( ! empty( $user_id ) || ! empty( $wishlist_token ) ) {
                 $sql = "SELECT *
                         FROM `{$wpdb->yith_wcwl_items}` AS i
-                        LEFT JOIN {$wpdb->yith_wcwl_wishlists} AS l ON l.`ID` = i.`wishlist_id` WHERE 1";
+                        LEFT JOIN {$wpdb->yith_wcwl_wishlists} AS l ON l.`ID` = i.`wishlist_id`
+                        INNER JOIN {$wpdb->posts} AS p ON p.ID = i.prod_id
+                        INNER JOIN {$wpdb->postmeta} AS pm ON pm.post_id = p.ID
+                        WHERE 1 AND p.post_type = %s AND p.post_status = %s AND pm.meta_key = %s AND pm.meta_value = %s";
+
+                $sql_args = array(
+                    'product',
+                    'publish',
+                    '_visibility',
+                    'visible'
+                );
 
                 if( ! empty( $user_id ) ){
                     $sql .= " AND i.`user_id` = %d";
-                    $sql_args = array( $user_id );
+                    $sql_args[] = $user_id;
                 }
 
                 if( ! empty( $product_id ) ){
@@ -472,6 +622,8 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
                     $sql_args[] = $id;
                 }
 
+                $sql .= " GROUP BY i.prod_id, l.ID";
+
                 if( ! empty( $limit ) ){
                     $sql .= " LIMIT " . $offset . ", " . $limit;
                 }
@@ -482,6 +634,12 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
                 $wishlist = yith_getcookie( 'yith_wcwl_products' );
 
                 foreach( $wishlist as $key => $cookie ){
+                    $existing_products = $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} AS p LEFT JOIN {$wpdb->postmeta} AS pm ON p.ID = pm.post_id WHERE post_type = %s AND post_status = %s AND pm.meta_key = %s AND pm.meta_value = %s", array( 'product', 'publish', '_visibility', 'visible' ) ) );
+
+                    if( ! in_array( $cookie['prod_id'], $existing_products ) ){
+                        unset( $wishlist[ $key ] );
+                    }
+
                     if( ! empty( $product_id ) && $cookie['prod_id'] != $product_id ){
                         unset( $wishlist[ $key ] );
                     }
@@ -523,8 +681,6 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
          * @since 1.0.0
          */
         public function get_product_details( $product_id, $wishlist_id = false ) {
-            global $wpdb;
-
             return $this->get_products(
                 array(
                     'prod_id' => $product_id,
@@ -606,7 +762,7 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
             $user_id = ( ! empty( $this->details['user_id'] ) ) ? $this->details['user_id'] : false;
 
             if( $user_id == false ){
-                $this->errors[] = __( 'You need to log in before creating a new wishlist', 'yit' );
+                $this->errors[] = __( 'You need to log in before creating a new wishlist', 'yith-woocommerce-wishlist' );
                 return "error";
             }
 
@@ -910,7 +1066,11 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
             }
 
             $wishlist_page = get_post( $wishlist_page_id );
-	        $wishlist_page_slug = $wishlist_page->post_name;
+	        $wishlist_page_slug = $wishlist_page ? $wishlist_page->post_name : false;
+
+            if ( empty( $wishlist_page_slug ) ){
+                return;
+            }
 
             add_rewrite_rule( '(([^/]+/)*' . $wishlist_page_slug . ')(/(.*))?/page/([0-9]{1,})/?$', 'index.php?pagename=$matches[1]&wishlist-action=$matches[4]&paged=$matches[5]', 'top' );
             add_rewrite_rule( '(([^/]+/)*' . $wishlist_page_slug . ')(/(.*))?/?$', 'index.php?pagename=$matches[1]&wishlist-action=$matches[4]', 'top' );
@@ -1247,11 +1407,11 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
 
             if( $product->is_type( 'simple' ) && get_option( 'yith_wcwl_redirect_cart' ) == 'yes' ){
                 if( ! ( defined( 'DOING_AJAX' ) && DOING_AJAX ) && yith_wcwl_is_wishlist() ){
-                    $url = add_query_arg( 'add-to-cart', $product->id, WC()->cart->get_cart_url() );
+                    $url = add_query_arg( 'add-to-cart', $product->id, function_exists( 'wc_get_cart_url' ) ? wc_get_cart_url() : WC()->cart->get_cart_url() );
                 }
             }
 
-            if( get_option( 'yith_wcwl_remove_after_add_to_cart' ) == 'yes' ){
+            if( ! $product->is_type( 'external' ) && get_option( 'yith_wcwl_remove_after_add_to_cart' ) == 'yes' ){
                 if( ! ( defined( 'DOING_AJAX' ) && DOING_AJAX ) && yith_wcwl_is_wishlist() ) {
                     $url = add_query_arg(
 	                    array(
@@ -1311,20 +1471,20 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
          */
         public function remove_from_wishlist_ajax() {
             $wishlist_token = isset( $this->details['wishlist_token'] ) ? $this->details['wishlist_token'] : false;
-            $count = yith_wcwl_count_products( $wishlist_token );
+            $count = $this->count_products( $wishlist_token );
             $message = '';
 
             if( $count != 0 ) {
                 if ( $this->remove() ) {
-                    $message = apply_filters( 'yith_wcwl_product_removed_text', __( 'Product successfully removed.', 'yit' ) );
+                    $message = apply_filters( 'yith_wcwl_product_removed_text', __( 'Product successfully removed.', 'yith-woocommerce-wishlist' ) );
                     $count --;
                 }
                 else {
-                    $message = apply_filters( 'yith_wcwl_unable_to_remove_product_message', __( 'Error. Unable to remove the product from the wishlist.', 'yit' ) );
+                    $message = apply_filters( 'yith_wcwl_unable_to_remove_product_message', __( 'Error. Unable to remove the product from the wishlist.', 'yith-woocommerce-wishlist' ) );
                 }
             }
             else{
-                $message = apply_filters( 'yith_wcwl_no_product_to_remove_message', __( 'No products were added to the wishlist', 'yit' ) );
+                $message = apply_filters( 'yith_wcwl_no_product_to_remove_message', __( 'No products were added to the wishlist', 'yith-woocommerce-wishlist' ) );
             }
 
             wc_add_notice( $message );
@@ -1366,7 +1526,7 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
 			    $type_msg = 'error';
 		    }
 		    else {
-			    $message = apply_filters( 'yith_wcwl_product_removed_text', __( 'An error as occurred.', 'yit' ) );
+			    $message = apply_filters( 'yith_wcwl_product_removed_text', __( 'An error as occurred.', 'yith-woocommerce-wishlist' ) );
 			    $type_msg = 'error';
 		    }
 
@@ -1402,10 +1562,10 @@ if ( ! class_exists( 'YITH_WCWL' ) ) {
 			    return $url;
 		    }
 
-		    return get_option( 'yith_wcwl_redirect_cart' ) == 'yes' ? WC()->cart->get_cart_url() : $this->get_wishlist_url();
+            $cart_url = function_exists( 'wc_get_cart_url' ) ? wc_get_cart_url() : WC()->cart->get_cart_url();
+
+			return get_option( 'yith_wcwl_redirect_cart' ) == 'yes' ? $cart_url : $this->get_wishlist_url();
 	    }
-
-
     }
 }
 

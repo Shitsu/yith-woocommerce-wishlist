@@ -57,7 +57,7 @@ if ( ! class_exists( 'YIT_Video' ) ) {
                 return;
             }
 
-            if( ! $echo ) ob_start();
+            ob_start();
 
             $id = preg_replace( '/[&|&amp;]feature=([\w\-]*)/', '', $id );
             $id = preg_replace( '/(youtube|vimeo):/', '', $id ); ?>
@@ -67,7 +67,11 @@ if ( ! class_exists( 'YIT_Video' ) ) {
             </div>
 
             <?php
-            if( ! $echo ) return ob_get_clean();
+            $html = apply_filters( 'yit_video_youtube', ob_get_clean() );
+
+            if( $echo ) echo $html;
+
+            return $html;
         }
 
         /**
@@ -97,17 +101,24 @@ if ( ! class_exists( 'YIT_Video' ) ) {
                 $id = self::video_id_by_url( $url );
             }
 
-            if( ! $echo ) ob_start();
+            ob_start();
 
             $id = preg_replace( '/[&|&amp;]feature=([\w\-]*)/', '', $id );
-            $id = preg_replace( '/(youtube|vimeo):/', '', $id ); ?>
+            $id = preg_replace( '/(youtube|vimeo):/', '', $id );
+            $http  = is_ssl()? 'https' : 'http';
+            ?>
+
 
             <div class="post_video vimeo">
-                <iframe wmode="transparent" src="http://player.vimeo.com/video/<?php echo $id; ?>?title=0&amp;byline=0&amp;portrait=0" width="<?php echo $width; ?>" height="<?php echo $height; ?>" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>
+                <iframe wmode="transparent" src="<?php echo $http;?>://player.vimeo.com/video/<?php echo $id; ?>?title=0&amp;byline=0&amp;portrait=0" width="<?php echo $width; ?>" height="<?php echo $height; ?>" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>
             </div>
 
             <?php
-            if( ! $echo ) return ob_get_clean();
+            $html = apply_filters( 'yit_video_vimeo', ob_get_clean() );
+
+            if( $echo ) echo $html;
+
+            return $html;
         }
 
         /**
@@ -123,6 +134,7 @@ if ( ! class_exists( 'YIT_Video' ) ) {
          */
         public static function video_id_by_url( $url ) {
             $parsed = parse_url( esc_url( $url ) );
+
             if ( ! isset( $parsed['host'] ) ) {
                 return false;
             }

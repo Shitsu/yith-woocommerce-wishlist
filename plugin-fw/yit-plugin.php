@@ -13,28 +13,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 } // Exit if accessed directly
 
 
-if( !defined('YIT_CORE_PLUGIN')) {
-    define( 'YIT_CORE_PLUGIN', true);
-}
-
-if( !defined('YIT_CORE_PLUGIN_PATH')) {
-    define( 'YIT_CORE_PLUGIN_PATH', dirname(__FILE__));
-}
-
-if( !defined('YIT_CORE_PLUGIN_URL')) {
-    define( 'YIT_CORE_PLUGIN_URL', untrailingslashit( plugins_url( '/', __FILE__ ) ));
-}
-
-if( ! defined( 'YIT_CORE_PLUGIN_TEMPLATE_PATH' ) ){
-    define ( 'YIT_CORE_PLUGIN_TEMPLATE_PATH', YIT_CORE_PLUGIN_PATH .  '/templates' );
-}
-
+! defined( 'YIT_CORE_PLUGIN' )                  && define( 'YIT_CORE_PLUGIN', true);
+! defined( 'YIT_CORE_PLUGIN_PATH' )             && define( 'YIT_CORE_PLUGIN_PATH', dirname(__FILE__) );
+! defined( 'YIT_CORE_PLUGIN_URL' )              && define( 'YIT_CORE_PLUGIN_URL', untrailingslashit( plugins_url( '/', __FILE__ ) ) );
+! defined( 'YIT_CORE_PLUGIN_TEMPLATE_PATH' )    && define( 'YIT_CORE_PLUGIN_TEMPLATE_PATH', YIT_CORE_PLUGIN_PATH .  '/templates' );
 
 include_once( 'yit-functions.php' );
 include_once( 'yit-plugin-registration-hook.php' );
 include_once( 'lib/yit-metabox.php' );
 include_once( 'lib/yit-plugin-panel.php' );
 include_once( 'lib/yit-plugin-panel-wc.php' );
+include_once( 'lib/yit-ajax.php' );
+include_once( 'lib/yit-plugin-panel-sidebar.php' );
 include_once( 'lib/yit-plugin-subpanel.php' );
 include_once( 'lib/yit-plugin-common.php' );
 include_once( 'lib/yit-plugin-gradients.php');
